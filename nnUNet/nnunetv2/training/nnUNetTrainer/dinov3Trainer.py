@@ -73,6 +73,10 @@ from nnunetv2.utilities.crossval_split import generate_crossval_split
 from nnunetv2.utilities.default_n_proc_DA import get_allowed_n_proc_DA
 from nnunetv2.utilities.file_path_utilities import check_workers_alive_and_busy
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
+from nnunetv2.global_config import (
+    DINO_V3_DEFAULT_PRETRAINED,
+    MEDDINOV3_CT_CKPT,
+)
 from nnunetv2.utilities.helpers import empty_cache, dummy_context
 from nnunetv2.utilities.label_handling.label_handling import convert_labelmap_to_one_hot, determine_num_input_channels
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
@@ -309,7 +313,7 @@ class dinov3Trainer(nnUNetTrainer):
         model = vit_base(drop_path_rate=0.2, layerscale_init=1.0e-05)
         # Load checkpoint
         chkpt = torch.load(
-            '/scr2/yl_li/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+            DINO_V3_DEFAULT_PRETRAINED,
             map_location='cpu'
         )
         # Load with strict=False so it won’t crash on mismatches
@@ -1392,7 +1396,7 @@ class dinov3_base_sam_Trainer(dinov3Trainer):
         model = vit_base(drop_path_rate=0.3, layerscale_init=1.0e-05)
         # Load checkpoint
         chkpt = torch.load(
-            '/scr2/yl_li/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+            DINO_V3_DEFAULT_PRETRAINED,
             map_location='cpu'
         )
         # Load with strict=False so it won’t crash on mismatches
@@ -1433,7 +1437,7 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
         model = vit_base(drop_path_rate=0.2, layerscale_init=1.0e-05)
         # Load checkpoint
         chkpt = torch.load(
-            '/scr2/yl_li/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+            DINO_V3_DEFAULT_PRETRAINED,
             map_location='cpu'
         )
         # Load with strict=False so it won’t crash on mismatches
@@ -1544,7 +1548,7 @@ class dinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
         model = vit_base(drop_path_rate=0.2, layerscale_init=1.0e-05)
         # Load checkpoint
         chkpt = torch.load(
-            '/scr2/yl_li/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+            DINO_V3_DEFAULT_PRETRAINED,
             map_location='cpu'
         )
         # Load with strict=False so it won’t crash on mismatches
@@ -1588,7 +1592,7 @@ class meddinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
                          qkv_bias = False, mask_k_bias= True)
         # Load checkpoint (remember to download our checkpoint)
         chkpt = torch.load(
-            '/scr2/yl_li/dinov3/public_release/ct_model_vitb_batch_512_adapt_high_res/model.pth',
+            MEDDINOV3_CT_CKPT,
             map_location='cpu'
         )
         state_dict = chkpt['teacher']
@@ -1613,7 +1617,7 @@ def build_dinov3_base():
 
     # Load checkpoint
     chkpt = torch.load(
-        '/scr2/yl_li/dinov3/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+        DINO_V3_DEFAULT_PRETRAINED,
         map_location='cpu'
     )
     state_dict = chkpt
@@ -1686,7 +1690,7 @@ def debug():
 
     # Load checkpoint
     chkpt = torch.load(
-        '/scr2/yl_li/dinov3/ct_model_vitb_batch_512/converted_ckpt/21999/model.pth',
+        MEDDINOV3_CT_CKPT,
         map_location='cpu'
     )
     state_dict = chkpt['model']

@@ -95,6 +95,20 @@ def compute_dice(pred, ref):
         return 1.0
     return 2.0 * intersection / denom
 
+def compute_iou_from_dice(dice_value: float) -> float:
+    """
+    Compute IoU (Jaccard) from Dice.
+    IoU = Dice / (2 - Dice), for Dice in [0, 1].
+    If dice_value is NaN, returns NaN.
+    """
+    if np.isnan(dice_value):
+        return np.nan
+    denom = 2.0 - dice_value
+    if denom <= 0:
+        # This should not happen for Dice in [0, 1], but guard anyway
+        return np.nan
+    return float(dice_value / denom)
+
 def compute_volume_difference(pred, ref, spacing):
     """
     Compute the volume difference (in mL, for instance) between two binary arrays,
@@ -224,6 +238,7 @@ def compute_segmentation_metrics(
                 avg_surf_dist_c = np.nan
                 centroid_dist_c = np.nan
                 nsd = np.nan
+                iou_c = np.nan
             else:
                 # Compute metrics normally
                 dice_c = compute_dice(pred_c, label_c)
@@ -237,11 +252,13 @@ def compute_segmentation_metrics(
                     y_pred=pred_c_oh, y=label_c_oh,
                     class_thresholds=[1.0] * 1,
                     include_background=True, spacing=(spacing[2], spacing[1], spacing[0])
-                ).cpu().numpy()[0][0] 
+                ).cpu().numpy()[0][0]
+                iou_c = compute_iou_from_dice(dice_c)
 
             metrics_per_scan[f"dice_class{c}"] = dice_c
             metrics_per_scan[f"hd95_class{c}"] = hd95_c
             metrics_per_scan[f"nsd_class{c}"] = nsd
+            metrics_per_scan[f"iou_class{c}"] = iou_c
             # metrics_per_scan[f"volDiff_class{c}"] = vol_diff_c
             # metrics_per_scan[f"surfDist_class{c}"] = avg_surf_dist_c
             # metrics_per_scan[f"centroidDist_class{c}"] = centroid_dist_c
@@ -258,7 +275,7 @@ def compute_segmentation_metrics(
     summary = {}
     for c in range(1, num_classes+1):
         class_summary = {}
-        for metric_key in ["dice", "hd95", "nsd"]:
+        for metric_key in ["dice", "hd95", "nsd", "iou"]:
             col_name = f"{metric_key}_class{c}"
             class_summary[metric_key] = {
                 "mean": means[col_name],
@@ -269,21 +286,22 @@ def compute_segmentation_metrics(
     return df_metrics, summary
 
 if __name__ == "__main__":
+    dataset_base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     dataset = "Dataset023_BTCV"
     trainer = "dinoUNetTrainer__nnUNetPlans__2d"
-    preds_dir = f"/scr/yl_li/segmentation_data/nnUNet_results/{dataset}/{trainer}/fold_0/validation"
+    preds_dir = f"{dataset_base_dir}/nnUNet_results/{dataset}/{trainer}/fold_0/validation"
     csv_filename = preds_dir + "/segmentation_metrics.csv"
 
-    labels_dir = f"/scr/yl_li/segmentation_data/nnUNet_raw_data_base/nnUNet_raw_data/{dataset}/labelsTr"
+    labels_dir = f"{dataset_base_dir}/nnUNet_raw_data_base/nnUNet_raw_data/{dataset}/labelsTr"
     # Load dataset.json which contains the labels mapping (including background)
-    dataset_json_path = f"/scr/yl_li/segmentation_data/nnUNet_raw_data_base/nnUNet_raw_data/{dataset}/dataset.json"  # Change this path if needed
+    dataset_json_path = f"{dataset_base_dir}/nnUNet_raw_data_base/nnUNet_raw_data/{dataset}/dataset.json"  # Change this path if needed
     with open(dataset_json_path, "r") as f:
         dataset_info = json.load(f)
     class_list = list(dataset_info['labels'].keys())[1:]
     print(class_list)
     df, summary_dict = compute_segmentation_metrics(preds_dir, labels_dir, class_list)
 
-    aggregated = {metric: {"mean": [], "std": []} for metric in ["dice", "hd95", "nsd"]}
+    aggregated = {metric: {"mean": [], "std": []} for metric in ["dice", "hd95", "nsd", "iou"]}
     for class_name, metrics in summary_dict.items():
             for metric_key in aggregated.keys():
                 mean_val = metrics[metric_key]["mean"]

@@ -51,6 +51,13 @@ cd nnUNet/nnunetv2/training/nnUNetTrainer/dinov3/dinov3/eval/segmentation/models
 pip install .
 ```
 
+### 5. Download pretrained checkpoints (required)
+Before running inference or finetuning, you must download the pretrained weights:
+```bash
+python pre_trained_models/download_pre_trained.py
+```
+
+
 ## Inference 
 A minimal inference code is provided in 
 ```

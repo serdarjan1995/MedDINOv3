@@ -98,8 +98,8 @@ class Primus(AbstractDynamicNetworkArchitectures):
         self.up_projection.apply(InitWeights_He(1e-2))
 
     def forward(self, x, ret_mask=False):
-        assert x.shape[1] == 1
-        x = x.repeat(1,3,1,1)
+        if x.shape[1] != 3:
+            x = x.repeat(1,3,1,1)
         x = self.dino_encoder.get_intermediate_layers(x,  n=1, reshape = True)[0]
         dec_out = self.up_projection(x)
         return dec_out
@@ -136,8 +136,8 @@ class Primus_Multiscale(AbstractDynamicNetworkArchitectures):
         self.interaction_indices=interaction_indices
 
     def forward(self, x, ret_mask=False):
-        assert x.shape[1] == 1
-        x = x.repeat(1,3,1,1)
+        if x.shape[1] != 3:
+            x = x.repeat(1,3,1,1)
         hier = self.dino_encoder.get_intermediate_layers(x,  n=self.interaction_indices, reshape = True)
         hier = torch.cat(hier, dim=1)
         dec_out = self.up_projection(hier)

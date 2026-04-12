@@ -907,7 +907,8 @@ class Sam_nnUNet(nn.Module):
         self,
         x
     ):
-        assert x.shape[1] == 1
+        if x.shape[1] != 3:
+            x = x.repeat(1,3,1,1)
         if x.shape[2] != self.img_size:
             x = F.interpolate(
             x,
@@ -915,7 +916,6 @@ class Sam_nnUNet(nn.Module):
             mode="bilinear",
             align_corners=False)
 
-        x = x.repeat(1,3,1,1)
         img_emb = self.image_encoder(x)
         sparse_emb, dense_emb = self.prompt_encoder(
             points=None,

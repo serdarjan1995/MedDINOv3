@@ -197,4 +197,4 @@ dependencies:
     - tzdata==2025.2
     - unittest2==1.1.0
     - yacs==0.1.8
-prefix: /home/yl_li/.conda/envs/dinov3
+prefix: .conda/envs/dinov3
