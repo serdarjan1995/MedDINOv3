@@ -1,8 +1,8 @@
 import os
 
 # Centralized root for externally stored checkpoints.
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-print(ROOT_DIR)
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 PRE_TRAINED_PATH = os.path.join(ROOT_DIR, "pre_trained_models")
 
