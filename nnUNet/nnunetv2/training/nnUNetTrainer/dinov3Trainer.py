@@ -84,6 +84,10 @@ from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 import torch.nn.functional as F
 import random
 
+
+DEFAULT_LR = 1e-3
+DEFAULT_VIT_LR = 1e-4
+
 class dinov3Trainer(nnUNetTrainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
                  device: torch.device = torch.device('cuda')):
@@ -957,7 +961,6 @@ class dinov3Trainer(nnUNetTrainer):
 
     def on_train_epoch_start(self):
         self.network.train()
-        self.lr_scheduler.step(self.current_epoch)
         self.print_to_log_file('')
         self.print_to_log_file(f'Epoch {self.current_epoch}')
         self.print_to_log_file(
@@ -991,6 +994,7 @@ class dinov3Trainer(nnUNetTrainer):
             l.backward()
             torch.nn.utils.clip_grad_norm_(self.network.parameters(), 12)
             self.optimizer.step()
+        self.lr_scheduler.step()
         return {'loss': l.detach().cpu().numpy()}
 
     def on_train_epoch_end(self, train_outputs: List[dict]):
@@ -1411,8 +1415,8 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
         # Call the parent class constructor
         super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
         # Override hyperparameters
-        self.initial_lr = 3e-4
-        self.vit_lr = 1e-4
+        self.initial_lr = DEFAULT_LR
+        self.vit_lr = DEFAULT_VIT_LR
         self.weight_decay = 5e-2
         self.vit_weight_decay = 5e-2
         self.oversample_foreground_percent = 0.33
@@ -1486,8 +1490,8 @@ class dinov3_base_primus_Trainer_scratch(dinov3_base_primus_Trainer):
         # Call the parent class constructor
         super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
         # Override hyperparameters
-        self.initial_lr = 3e-4
-        self.vit_lr = 3e-4
+        self.initial_lr = DEFAULT_LR
+        self.vit_lr = DEFAULT_VIT_LR
         self.weight_decay = 5e-2
         self.vit_weight_decay = 5e-2
         self.oversample_foreground_percent = 0.33
@@ -1522,8 +1526,8 @@ class dinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
         # Call the parent class constructor
         super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
         # Override hyperparameters
-        self.initial_lr = 3e-4
-        self.vit_lr = 1e-4
+        self.initial_lr = DEFAULT_LR
+        self.vit_lr = DEFAULT_VIT_LR
         self.weight_decay = 5e-2
         self.vit_weight_decay = 5e-2
         self.oversample_foreground_percent = 0.33
@@ -1565,8 +1569,8 @@ class meddinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
         # Call the parent class constructor
         super().__init__(plans, configuration, fold, dataset_json, unpack_dataset, device)
         # Override hyperparameters
-        self.initial_lr = 3e-4
-        self.vit_lr = 3e-5
+        self.initial_lr = DEFAULT_LR
+        self.vit_lr = DEFAULT_VIT_LR
         self.weight_decay = 5e-2
         self.vit_weight_decay = 5e-2
         self.oversample_foreground_percent = 0.33
