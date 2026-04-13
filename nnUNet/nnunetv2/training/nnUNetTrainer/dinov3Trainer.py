@@ -85,8 +85,8 @@ import torch.nn.functional as F
 import random
 
 
-DEFAULT_LR = 5e-4
-DEFAULT_VIT_LR = 5e-5
+DEFAULT_LR = 3e-4
+DEFAULT_VIT_LR = 3e-5
 
 class dinov3Trainer(nnUNetTrainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
