@@ -85,8 +85,8 @@ import torch.nn.functional as F
 import random
 
 
-DEFAULT_LR = 1e-3
-DEFAULT_VIT_LR = 1e-4
+DEFAULT_LR = 5e-4
+DEFAULT_VIT_LR = 5e-5
 
 class dinov3Trainer(nnUNetTrainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
@@ -1576,7 +1576,7 @@ class meddinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
         self.oversample_foreground_percent = 0.33
         self.num_iterations_per_epoch = 250
         self.num_val_iterations_per_epoch = 50
-        self.warmup_epochs = 0
+        self.warmup_epochs = 3
         self.num_epochs = 1000
         self.current_epoch = 0
         self.enable_deep_supervision = False
