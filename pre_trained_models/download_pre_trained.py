@@ -43,7 +43,7 @@ def download_from_hf():
         state_dict = load_file(safetensors_file)
 
         # Save as .pth
-        torch.save(state_dict, dino_filename)
+        torch.save(state_dict, dino_pth_path)
         print(f"Downloaded dinov3-vitl16-pretrain-lvd1689m checkpoint to {dino_pth_path}")
         os.remove(safetensors_file)
 

@@ -500,6 +500,7 @@ class dinov3Trainer(nnUNetTrainer):
         optimizer = torch.optim.SGD(self.network.parameters(), self.initial_lr, weight_decay=self.weight_decay,
                                     momentum=0.99, nesterov=True)
         lr_scheduler = PolyLRScheduler(optimizer, self.initial_lr, self.num_epochs)
+        self.logger.log(f"PolyLRScheduler with initial LR {self.initial_lr} and {self.num_epochs} epochs")
         return optimizer, lr_scheduler
 
     def plot_network_architecture(self):
@@ -1426,16 +1427,20 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
         self.num_epochs = 1000
         self.current_epoch = 0
         self.enable_deep_supervision = False
+        # Stop training if EMA pseudo Dice does not improve for this many epochs.
+        self.early_stopping_patience = 5
+        self._epochs_without_improvement = 0
+        self._should_stop = False
 
     @staticmethod
-    def build_network_architecture(patch_size: tuple, 
+    def build_network_architecture(patch_size: tuple,
                                    architecture_class_name: str,
                                    arch_init_kwargs: dict,
                                    arch_init_kwargs_req_import: Union[List[str], Tuple[str, ...]],
                                    num_input_channels: int,
                                    num_output_channels: int,
                                    enable_deep_supervision: bool = True) -> nn.Module:
-    
+
         from nnunetv2.training.nnUNetTrainer.dinov3.dinov3.models.vision_transformer import vit_base
         # Initialize model
         model = vit_base(drop_path_rate=0.2, layerscale_init=1.0e-05)
@@ -1450,7 +1455,7 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
         from nnunetv2.training.nnUNetTrainer.dinov3.dinov3.models.primus import Primus
         primus = Primus(embed_dim=768, patch_embed_size=16, num_classes=num_output_channels, dino_encoder=model)
         return primus
-    
+
     def configure_optimizers(self):
         # Split parameters into two groups: vit and the rest.
         vit_params = []
@@ -1460,30 +1465,73 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
                 vit_params.append(param)
             else:
                 other_params.append(param)
-        
+
         optimizer = torch.optim.AdamW([
             {'params': other_params, 'lr': self.initial_lr, 'weight_decay': self.weight_decay},
             {'params': vit_params, 'lr': self.vit_lr, 'weight_decay': self.vit_weight_decay}
         ], betas = (0.9, 0.98))
 
-        # Total number of iterations: adjust based on your training configuration.
-        total_iters = self.num_epochs # Make sure self.iters_per_epoch is defined.
+        # The scheduler is stepped once per training iteration (see train_step),
+        # so the schedule must be expressed in iteration units — not epochs.
+        warmup_iters = self.warmup_epochs * self.num_iterations_per_epoch
+        total_iters = self.num_epochs * self.num_iterations_per_epoch
         def lr_lambda(current_iter):
-            # Linear warmup phase.
-            if current_iter < self.warmup_epochs:
-                # Linearly increase lr from 1e-6 to initial lr for each parameter group.
-                # Here, scaling factor is computed relative to self.initial_lr.
-                return (1e-6 + (self.initial_lr - 1e-6) * (current_iter / self.warmup_epochs)) / self.initial_lr
-            else:
-                # After warmup, apply a polynomial decay. Adjust the 'power' as needed (e.g., 1.0 for linear decay).
-                power = 1.0
-                progress = (current_iter - self.warmup_epochs) / (total_iters - self.warmup_epochs)
-                return (1 - progress) ** power
+            if warmup_iters > 0 and current_iter < warmup_iters:
+                return (1e-6 + (self.initial_lr - 1e-6) * (current_iter / warmup_iters)) / self.initial_lr
+            power = 1.0
+            denom = max(1, total_iters - warmup_iters)
+            progress = (current_iter - warmup_iters) / denom
+            # Clamp so LR can never go negative if the scheduler is stepped past total_iters.
+            return max(0.0, (1 - progress) ** power)
 
         # Create the scheduler that uses the lambda function.
         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
         return optimizer, lr_scheduler
-    
+
+    def on_epoch_end(self):
+        previous_best = self._best_ema
+        super().on_epoch_end()
+        improved = previous_best is None or (
+            self._best_ema is not None and self._best_ema > previous_best
+        )
+        if improved:
+            self._epochs_without_improvement = 0
+        else:
+            self._epochs_without_improvement += 1
+        if self._epochs_without_improvement >= self.early_stopping_patience:
+            self.print_to_log_file(
+                f"Early stopping: EMA pseudo Dice has not improved for "
+                f"{self._epochs_without_improvement} epochs "
+                f"(patience={self.early_stopping_patience})."
+            )
+            self._should_stop = True
+
+    def run_training(self):
+        self.on_train_start()
+
+        for epoch in range(self.current_epoch, self.num_epochs):
+            self.on_epoch_start()
+
+            self.on_train_epoch_start()
+            train_outputs = []
+            for batch_id in range(self.num_iterations_per_epoch):
+                train_outputs.append(self.train_step(next(self.dataloader_train)))
+            self.on_train_epoch_end(train_outputs)
+
+            with torch.no_grad():
+                self.on_validation_epoch_start()
+                val_outputs = []
+                for batch_id in range(self.num_val_iterations_per_epoch):
+                    val_outputs.append(self.validation_step(next(self.dataloader_val)))
+                self.on_validation_epoch_end(val_outputs)
+
+            self.on_epoch_end()
+
+            if self._should_stop:
+                break
+
+        self.on_train_end()
+
 class dinov3_base_primus_Trainer_scratch(dinov3_base_primus_Trainer):
     def __init__(self, plans: dict, configuration: str, fold: int, dataset_json: dict, unpack_dataset: bool = True,
                  device: torch.device = torch.device('cuda')):
@@ -1577,7 +1625,7 @@ class meddinov3_base_primus_multiscale_Trainer(dinov3_base_primus_Trainer):
         self.num_iterations_per_epoch = 250
         self.num_val_iterations_per_epoch = 50
         self.warmup_epochs = 3
-        self.num_epochs = 1000
+        self.num_epochs = 100
         self.current_epoch = 0
         self.enable_deep_supervision = False
 
