@@ -1488,9 +1488,77 @@ class dinov3_base_primus_Trainer(dinov3Trainer):
         lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
         return optimizer, lr_scheduler
 
+    def on_validation_epoch_end(self, val_outputs: List[dict]):
+        # Recompute tp/fp/fn the same way the parent does so we can derive
+        # precision and recall alongside Dice/F1 (which the parent already logs).
+        outputs_collated = collate_outputs(val_outputs)
+        tp = np.sum(outputs_collated['tp_hard'], 0)
+        fp = np.sum(outputs_collated['fp_hard'], 0)
+        fn = np.sum(outputs_collated['fn_hard'], 0)
+
+        if self.is_ddp:
+            world_size = dist.get_world_size()
+            tps = [None for _ in range(world_size)]
+            dist.all_gather_object(tps, tp)
+            tp = np.vstack([i[None] for i in tps]).sum(0)
+            fps = [None for _ in range(world_size)]
+            dist.all_gather_object(fps, fp)
+            fp = np.vstack([i[None] for i in fps]).sum(0)
+            fns = [None for _ in range(world_size)]
+            dist.all_gather_object(fns, fn)
+            fn = np.vstack([i[None] for i in fns]).sum(0)
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            precision_per_class = np.where((tp + fp) > 0, tp / (tp + fp), np.nan)
+            recall_per_class = np.where((tp + fn) > 0, tp / (tp + fn), np.nan)
+        self._last_val_precision_per_class = precision_per_class
+        self._last_val_recall_per_class = recall_per_class
+
+        super().on_validation_epoch_end(val_outputs)
+
     def on_epoch_end(self):
         previous_best = self._best_ema
+        current_ema = self.logger.my_fantastic_logging['ema_fg_dice'][-1]
+        # Parent uses the same condition to decide whether to overwrite
+        # checkpoint_best.pth. Predict it so we can rotate the existing best
+        # to checkpoint_best_prev.pth first, keeping the top-2 bests on disk.
+        will_save_new_best = previous_best is None or current_ema > previous_best
+        if will_save_new_best and self.local_rank == 0 and not self.disable_checkpointing:
+            best_path = join(self.output_folder, 'checkpoint_best.pth')
+            prev_path = join(self.output_folder, 'checkpoint_best_prev.pth')
+            if isfile(best_path):
+                try:
+                    os.replace(best_path, prev_path)
+                except OSError as e:
+                    self.print_to_log_file(
+                        f"Warning: could not rotate previous best checkpoint: {e}"
+                    )
+
         super().on_epoch_end()
+
+        # F1 is mathematically identical to Dice for segmentation
+        # (2TP / (2TP + FP + FN)), so we surface the Dice values under the F1
+        # label for clarity.
+        dice_per_class = self.logger.my_fantastic_logging['dice_per_class_or_region'][-1]
+        self.print_to_log_file(
+            'F1',
+            [np.round(v, decimals=4) for v in dice_per_class],
+            f'(mean={np.round(np.nanmean(dice_per_class), decimals=4)})'
+        )
+        if hasattr(self, '_last_val_precision_per_class'):
+            precision = self._last_val_precision_per_class
+            recall = self._last_val_recall_per_class
+            self.print_to_log_file(
+                'Precision',
+                [np.round(v, decimals=4) for v in precision],
+                f'(mean={np.round(np.nanmean(precision), decimals=4)})'
+            )
+            self.print_to_log_file(
+                'Recall',
+                [np.round(v, decimals=4) for v in recall],
+                f'(mean={np.round(np.nanmean(recall), decimals=4)})'
+            )
+
         improved = previous_best is None or (
             self._best_ema is not None and self._best_ema > previous_best
         )
